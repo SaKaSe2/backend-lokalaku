@@ -13,14 +13,23 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
+
+            // --- SESUAI UI FIGMA (REGISTER) ---
+            $table->string('fullname'); // Ganti 'name' jadi 'fullname'
+            $table->string('username')->unique(); // Tambah username
             $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+
+            // --- LOGIKA BACKEND ---
+            // Default kita set 'buyer' biar aman. Nanti pas register pedagang, frontend kirim role='seller'
+            $table->enum('role', ['buyer', 'seller'])->default('buyer');
+
+            $table->timestamp('email_verified_at')->nullable();
             $table->rememberToken();
             $table->timestamps();
         });
 
+        // Tabel bawaan Laravel (Biarkan saja, jangan dihapus)
         Schema::create('password_reset_tokens', function (Blueprint $table) {
             $table->string('email')->primary();
             $table->string('token');
