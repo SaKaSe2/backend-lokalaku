@@ -52,4 +52,50 @@ class KolosalService
             'target_location' => "Pusat Kota"
         ];
     }
+    // TAMBAHKAN METHOD BARU INI
+    public function getUserRecommendation($weather, $latitude, $longitude, $nearbyShops)
+    {
+        $shopList = collect($nearbyShops)->map(function ($shop) {
+            return "{$shop['name']} ({$shop['category']}) - {$shop['distance']}m";
+        })->implode(', ');
+
+        $prompt = "Kamu adalah asisten kuliner pintar. " .
+            "Cuaca saat ini: {$weather['description']}, suhu {$weather['temperature']}°C. " .
+            "Lokasi user di koordinat: {$latitude}, {$longitude}. " .
+            "Pedagang keliling terdekat dalam radius 1km: {$shopList}. " .
+            "Berikan 1 rekomendasi makanan/minuman yang cocok dengan cuaca ini dan tersedia dari pedagang terdekat. " .
+            "Jawab dalam format JSON: { " .
+            "\"recommendation\": \"Nama makanan/minuman\", " .
+            "\"reason\": \"Alasan singkat kenapa cocok dengan cuaca\", " .
+            "\"shop_name\": \"Nama pedagang yang recommended\" " .
+            "}.";
+
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Content-Type' => 'application/json',
+            ])->post($this->baseUrl . '/chat/completions', [
+                'model' => 'kolosal-model-v1',
+                'messages' => [
+                    ['role' => 'user', 'content' => $prompt]
+                ],
+                'response_format' => ['type' => 'json_object']
+            ]);
+
+            if ($response->successful()) {
+                $content = $response->json()['choices'][0]['message']['content'];
+                return json_decode($content, true);
+            }
+
+            Log::error('Kolosal API Fail: ' . $response->body());
+        } catch (\Exception $e) {
+            Log::error('Kolosal AI Exception: ' . $e->getMessage());
+        }
+
+        return [
+            'recommendation' => "Es Teh Manis",
+            'reason' => "Minuman segar cocok untuk cuaca panas",
+            'shop_name' => $nearbyShops[0]['name'] ?? "Pedagang Terdekat"
+        ];
+    }
 }

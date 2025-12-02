@@ -67,4 +67,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/seller/status', [SellerController::class, 'updateStatus']);
     Route::post('/seller/menu', [SellerController::class, 'addMenu']);
     Route::get('/seller/ai-insight', [SellerController::class, 'getAiInsight']);
+    Route::get('/user/map', [App\Http\Controllers\Api\UserController::class, 'getMapData']);
+    Route::get('/user/shop/{shopId}', [App\Http\Controllers\Api\UserController::class, 'getShopDetail']);
 });
