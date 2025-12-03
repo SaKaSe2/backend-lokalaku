@@ -52,10 +52,20 @@ class KolosalService
             'target_location' => "Pusat Kota"
         ];
     }
-    // TAMBAHKAN METHOD BARU INI
+
+    // TAMBAHKAN METHOD INI
     public function getUserRecommendation($weather, $latitude, $longitude, $nearbyShops)
     {
-        $shopList = collect($nearbyShops)->map(function ($shop) {
+        // Jika tidak ada shops, return default
+        if (empty($nearbyShops)) {
+            return [
+                'recommendation' => "Jelajahi area sekitar",
+                'reason' => "Belum ada pedagang terdekat saat ini",
+                'shop_name' => null
+            ];
+        }
+
+        $shopList = collect($nearbyShops)->map(function($shop) {
             return "{$shop['name']} ({$shop['category']}) - {$shop['distance']}m";
         })->implode(', ');
 
@@ -71,7 +81,7 @@ class KolosalService
             "}.";
 
         try {
-            $response = Http::withHeaders([
+            $response = Http::timeout(10)->withHeaders([
                 'Authorization' => 'Bearer ' . $this->apiKey,
                 'Content-Type' => 'application/json',
             ])->post($this->baseUrl . '/chat/completions', [
@@ -92,6 +102,7 @@ class KolosalService
             Log::error('Kolosal AI Exception: ' . $e->getMessage());
         }
 
+        // Fallback jika API gagal
         return [
             'recommendation' => "Es Teh Manis",
             'reason' => "Minuman segar cocok untuk cuaca panas",
