@@ -129,7 +129,6 @@ class SellerController extends Controller
         ]);
     }
 
-    // ✅ FIXED: Endpoint GET Dashboard Seller
     public function getDashboard()
     {
         $shop = Shop::with('menus')->where('user_id', Auth::id())->first();
@@ -168,7 +167,6 @@ class SellerController extends Controller
         ]);
     }
 
-    // ✅ NEW: Update menu
     public function updateMenu(Request $request, $menuId)
     {
         $request->validate([
@@ -184,7 +182,6 @@ class SellerController extends Controller
         $menu->price = $request->price;
 
         if ($request->hasFile('image')) {
-            // Hapus gambar lama
             if ($menu->image) {
                 Storage::disk('public')->delete($menu->image);
             }
@@ -204,7 +201,6 @@ class SellerController extends Controller
         ]);
     }
 
-    // ✅ NEW: Delete menu
     public function deleteMenu($menuId)
     {
         $shop = Shop::where('user_id', Auth::id())->firstOrFail();
@@ -219,6 +215,62 @@ class SellerController extends Controller
 
         return response()->json([
             'message' => 'Menu berhasil dihapus'
+        ]);
+    }
+
+    public function getMarketAnalysis(Request $request, KolosalService $aiService)
+    {
+        $shop = Shop::where('user_id', Auth::id())->firstOrFail();
+
+        // Validasi: Seller harus set lokasi dulu (Live)
+        if (!$shop->latitude || !$shop->longitude) {
+            return response()->json([
+                'message' => 'Harap aktifkan status LIVE terlebih dahulu agar kami tahu lokasi Anda.',
+                'data' => null
+            ], 400);
+        }
+
+        $lat = $shop->latitude;
+        $lng = $shop->longitude;
+        $radius = 1; // 1 KM
+
+        // 1. Query Toko Lain (Kompetitor) dalam radius 1 KM
+        // Menggunakan Raw SQL untuk menghitung jarak (Haversine Formula)
+        $nearbyShops = Shop::select('shops.*')
+            ->selectRaw(
+                "(6371 * acos(cos(radians(?)) * cos(radians(latitude))
+                * cos(radians(longitude) - radians(?)) + sin(radians(?))
+                * sin(radians(latitude)))) AS distance",
+                [$lat, $lng, $lat]
+            )
+            ->having('distance', '<', $radius)
+            ->where('id', '!=', $shop->id) // Jangan hitung toko sendiri
+            ->orderBy('distance')
+            ->get();
+
+        // 2. Format data ringkas untuk dikirim ke AI (Hemat Token)
+        $competitorData = $nearbyShops->map(function ($s) {
+            return "- {$s->name} (Jualan: {$s->category}) jarak " . number_format($s->distance * 1000, 0) . "m";
+        })->implode("\n");
+
+        // Jika tidak ada kompetitor
+        if ($nearbyShops->isEmpty()) {
+            $competitorData = "Belum ada pedagang lain dalam radius 1km (Wilayah kosong).";
+        }
+
+        // 3. Panggil AI Service
+        $analysis = $aiService->analyzeMarketOpportunities(
+            $competitorData,
+            $shop->category,
+            "{$lat}, {$lng}"
+        );
+
+        return response()->json([
+            'message' => 'Analisis pasar berhasil didapatkan',
+            'data' => [
+                'total_competitors' => $nearbyShops->count(),
+                'ai_analysis' => $analysis
+            ]
         ]);
     }
 }

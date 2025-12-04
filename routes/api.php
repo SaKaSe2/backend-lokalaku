@@ -68,8 +68,8 @@ Route::post('/login', function (Request $request) {
     ]);
 
     $user = User::where('email', $request->email)
-                ->where('role', $request->role) // 👈 Filter berdasarkan role
-                ->first();
+        ->where('role', $request->role) // 👈 Filter berdasarkan role
+        ->first();
 
     if (!$user || !Hash::check($request->password, $user->password)) {
         throw ValidationException::withMessages([
@@ -120,6 +120,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::put('/seller/menu/{menuId}', [SellerController::class, 'updateMenu']);
     Route::delete('/seller/menu/{menuId}', [SellerController::class, 'deleteMenu']);
     Route::get('/seller/ai-insight', [SellerController::class, 'getAiInsight']);
+    Route::get('/seller/market-analysis', [SellerController::class, 'getMarketAnalysis']);
 
     // User/Buyer routes
     Route::get('/user/map', [UserController::class, 'getMapData']);

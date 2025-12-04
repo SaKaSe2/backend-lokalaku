@@ -199,4 +199,69 @@ class KolosalService
             ];
         }
     }
+
+    public function analyzeMarketOpportunities($competitorList, $myCategory, $myLocation)
+    {
+        $prompt = "Kamu adalah Konsultan Bisnis UMKM Kaki Lima yang jenius. \n" .
+            "Saya pedagang kategori: '$myCategory'. \n" .
+            "Lokasi saya di koordinat: $myLocation. \n\n" .
+
+            "DATA KOMPETITOR (Radius 1KM dari saya):\n" .
+            "$competitorList \n\n" .
+
+            "TUGASMU:\n" .
+            "1. Analisa Saturation: Apa jenis jualan yang sudah terlalu banyak/jenuh di sini?\n" .
+            "2. Analisa Opportunity: Apa jenis jualan yang BELUM ADA tapi berpotensi laku (potensial)?\n" .
+            "3. Berikan saran strategi buat saya (apakah harus ganti menu, atau pertahankan tapi tambah variasi).\n\n" .
+
+            "JAWAB DALAM JSON SAJA:\n" .
+            "{ \n" .
+            "  \"saturated\": \"Ringkasan apa yang kebanyakan\", \n" .
+            "  \"opportunity\": \"Saran jualan yang belum ada tapi dicari orang\", \n" .
+            "  \"strategy\": \"Saran spesifik buat saya\", \n" .
+            "  \"score\": 80 (Skor potensi lokasi 0-100) \n" .
+            "}";
+
+        try {
+            Log::info('Calling Kolosal AI for Market Analysis');
+
+            $response = Http::timeout(60) // Kasih waktu agak lama karena mikir analitik
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $this->apiKey,
+                    'Content-Type' => 'application/json',
+                ])
+                ->post($this->baseUrl . '/chat/completions', [
+                    'model' => 'Claude Sonnet 4.5',
+                    'messages' => [
+                        ['role' => 'user', 'content' => $prompt]
+                    ],
+                    'max_tokens' => 600
+                ]);
+
+            if ($response->successful()) {
+                $content = $response->json()['choices'][0]['message']['content'] ?? null;
+
+                // Parsing JSON dari response AI
+                if ($content) {
+                    // Cari pattern JSON pakai Regex (untuk jaga-jaga ada teks tambahan)
+                    if (preg_match('/\{[\s\S]*\}/', $content, $matches)) {
+                        $jsonContent = $matches[0];
+                        return json_decode($jsonContent, true);
+                    }
+                }
+            }
+
+            Log::error('Kolosal Analysis Error', ['body' => $response->body()]);
+        } catch (\Exception $e) {
+            Log::error('Kolosal Analysis Exception: ' . $e->getMessage());
+        }
+
+        // Fallback jika AI Gagal
+        return [
+            "saturated" => "Tidak dapat menganalisa data saat ini",
+            "opportunity" => "Cobalah berjualan minuman segar atau camilan ringan",
+            "strategy" => "Fokus pada pelayanan yang ramah dan kebersihan",
+            "score" => 50
+        ];
+    }
 }
