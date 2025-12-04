@@ -21,69 +21,88 @@ class UserController extends Controller
         $this->kolosalService = $kolosalService;
     }
 
-    public function getMapData(Request $request)
-    {
-        try {
-            $request->validate([
-                'latitude' => 'required|numeric',
-                'longitude' => 'required|numeric',
+public function getMapData(Request $request)
+{
+    try {
+        $request->validate([
+            'latitude' => 'required|numeric',
+            'longitude' => 'required|numeric',
+        ]);
+
+        $latitude = $request->latitude;
+        $longitude = $request->longitude;
+        $radius = 1; // 1 km
+
+        // 1. Ambil data cuaca
+        $weather = $this->weatherService->getCurrentWeather($latitude, $longitude);
+
+        if (!$weather) {
+            Log::warning('Weather API returned null', [
+                'lat' => $latitude,
+                'lon' => $longitude
             ]);
 
-            $latitude = $request->latitude;
-            $longitude = $request->longitude;
-            $radius = 1; // 1 km
+            $weather = [
+                'temperature' => 28,
+                'feels_like' => 30,
+                'description' => 'cerah',
+                'main' => 'Clear',
+                'humidity' => 70,
+                'wind_speed' => 2.5
+            ];
+        }
 
-            // 1. Ambil data cuaca
-            $weather = $this->weatherService->getCurrentWeather($latitude, $longitude);
+        // 2. Cari pedagang dalam radius 1km yang sedang live
+        $nearbyShops = $this->getNearbyShops($latitude, $longitude, $radius);
 
-            if (!$weather) {
-                Log::warning('Weather API returned null', [
-                    'lat' => $latitude,
-                    'lon' => $longitude
-                ]);
-
-                // Fallback weather data
-                $weather = [
-                    'temperature' => 28,
-                    'feels_like' => 30,
-                    'description' => 'cerah',
-                    'main' => 'Clear',
-                    'humidity' => 70,
-                    'wind_speed' => 2.5
-                ];
-            }
-
-            // 2. Cari pedagang dalam radius 1km yang sedang live
-            $nearbyShops = $this->getNearbyShops($latitude, $longitude, $radius);
-
-            // 3. Dapatkan rekomendasi AI dari Kolosal
-            $aiRecommendation = null;
-            if (count($nearbyShops) > 0) {
+        // 3. Dapatkan rekomendasi AI dari Kolosal
+        $aiRecommendation = null;
+        if (count($nearbyShops) > 0) {
+            try {
+                // Tambah try-catch khusus untuk AI recommendation
                 $aiRecommendation = $this->kolosalService->getUserRecommendation(
                     $weather,
                     $latitude,
                     $longitude,
                     $nearbyShops
                 );
+
+                // 👇 PASTIKAN DATA VALID
+                if (!is_array($aiRecommendation) || !isset($aiRecommendation['recommendation'])) {
+                    Log::warning('AI recommendation invalid format', ['data' => $aiRecommendation]);
+                    $aiRecommendation = [
+                        'recommendation' => 'Es Teh Manis',
+                        'reason' => 'Minuman segar untuk cuaca saat ini',
+                        'shop_name' => $nearbyShops[0]['name']
+                    ];
+                }
+            } catch (\Exception $aiError) {
+                Log::error('AI Recommendation Error: ' . $aiError->getMessage());
+                $aiRecommendation = [
+                    'recommendation' => 'Es Teh Manis',
+                    'reason' => 'Minuman segar untuk cuaca saat ini',
+                    'shop_name' => $nearbyShops[0]['name']
+                ];
             }
-
-            return response()->json([
-                'weather' => $weather,
-                'nearby_shops' => $nearbyShops,
-                'ai_recommendation' => $aiRecommendation
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Error in getMapData: ' . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return response()->json([
-                'error' => 'Terjadi kesalahan server',
-                'message' => $e->getMessage()
-            ], 500);
         }
+
+        return response()->json([
+            'weather' => $weather,
+            'nearby_shops' => $nearbyShops,
+            'ai_recommendation' => $aiRecommendation
+        ]);
+
+    } catch (\Exception $e) {
+        Log::error('Error in getMapData: ' . $e->getMessage(), [
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'error' => 'Terjadi kesalahan server',
+            'message' => $e->getMessage()
+        ], 500);
     }
+}
 
 private function getNearbyShops($latitude, $longitude, $radiusInKm)
 {
