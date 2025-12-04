@@ -133,3 +133,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/users/stats', [App\Http\Controllers\Api\AdminController::class, 'getUserStats']);
     Route::get('/users/{userId}', [App\Http\Controllers\Api\AdminController::class, 'getUserDetail']);
 });
+
+Route::middleware('auth:sanctum')->post('/logout', function (Request $request) {
+    $request->user()->currentAccessToken()->delete();
+
+    return response()->json(['message' => 'Logout berhasil']);
+});
