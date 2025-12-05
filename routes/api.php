@@ -2,13 +2,18 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\SellerController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\BuyerController;
+use App\Http\Controllers\Api\SellerController;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
-// Public routes
+// ==========================================
+// PUBLIC ROUTES (Tidak perlu auth)
+// ==========================================
+
+// Register Buyer
 Route::post('/register/user', function (Request $request) {
     $request->validate([
         'fullname' => 'required|string',
@@ -29,11 +34,18 @@ Route::post('/register/user', function (Request $request) {
 
     return response()->json([
         'message' => 'Register berhasil',
-        'user' => $user,
+        'user' => [
+            'id' => $user->id,
+            'fullname' => $user->fullname,
+            'username' => $user->username,
+            'email' => $user->email,
+            'role' => $user->role,
+        ],
         'token' => $token
     ], 201);
 });
 
+// Register Seller
 Route::post('/register/seller', function (Request $request) {
     $request->validate([
         'fullname' => 'required|string',
@@ -54,21 +66,27 @@ Route::post('/register/seller', function (Request $request) {
 
     return response()->json([
         'message' => 'Register berhasil',
-        'user' => $user,
+        'user' => [
+            'id' => $user->id,
+            'fullname' => $user->fullname,
+            'username' => $user->username,
+            'email' => $user->email,
+            'role' => $user->role,
+        ],
         'token' => $token
     ], 201);
 });
 
-// ✅ FIXED: Login dengan role buyer/seller
+// Login (Buyer & Seller)
 Route::post('/login', function (Request $request) {
     $request->validate([
         'email' => 'required|email',
         'password' => 'required',
-        'role' => 'required|in:buyer,seller', // 👈 Validasi role
+        'role' => 'required|in:buyer,seller',
     ]);
 
     $user = User::where('email', $request->email)
-        ->where('role', $request->role) // 👈 Filter berdasarkan role
+        ->where('role', $request->role)
         ->first();
 
     if (!$user || !Hash::check($request->password, $user->password)) {
@@ -95,48 +113,78 @@ Route::post('/login', function (Request $request) {
     ]);
 });
 
-// Protected routes
+// ==========================================
+// PROTECTED ROUTES (Perlu auth:sanctum)
+// ==========================================
+
 Route::middleware(['auth:sanctum'])->group(function () {
 
+    // ==========================================
+    // USER ROUTES (Umum untuk semua role)
+    // ==========================================
+
     // Get current user info
-    Route::get('/user', function (Request $request) {
-        $user = $request->user();
-        return response()->json([
-            'id' => $user->id,
-            'fullname' => $user->fullname,
-            'username' => $user->username,
-            'email' => $user->email,
-            'role' => $user->role,
-        ]);
+    Route::get('/user', [UserController::class, 'getProfile']);
+
+    // Update user profile
+    Route::put('/user/profile', [UserController::class, 'updateProfile']);
+
+    // ==========================================
+    // BUYER ROUTES
+    // ==========================================
+
+    Route::prefix('buyer')->group(function () {
+        // Get map data (toko terdekat + cuaca + AI recommendation)
+        Route::post('/map', [BuyerController::class, 'getMapData']);
+
+        // Get detail toko beserta menu
+        Route::get('/shop/{shopId}', [BuyerController::class, 'getShopDetail']);
     });
 
-    // ✅ FIXED: GET Cek Data Seller (sekarang berfungsi)
-    Route::get('/seller', [SellerController::class, 'getDashboard']);
+    // ==========================================
+    // SELLER ROUTES
+    // ==========================================
 
-    // Seller routes
-    Route::post('/seller/setup', [SellerController::class, 'storeShop']);
-    Route::post('/seller/status', [SellerController::class, 'updateStatus']);
-    Route::post('/seller/menu', [SellerController::class, 'addMenu']);
-    Route::put('/seller/menu/{menuId}', [SellerController::class, 'updateMenu']);
-    Route::delete('/seller/menu/{menuId}', [SellerController::class, 'deleteMenu']);
-    Route::get('/seller/ai-insight', [SellerController::class, 'getAiInsight']);
-    Route::get('/seller/market-analysis', [SellerController::class, 'getMarketAnalysis']);
+    Route::prefix('seller')->group(function () {
+        // Dashboard - Cek data lapak
+        Route::get('/dashboard', [SellerController::class, 'getDashboard']);
 
-    // User/Buyer routes
-    Route::get('/user/map', [UserController::class, 'getMapData']);
-    Route::get('/user/shop/{shopId}', [UserController::class, 'getShopDetail']);
+        // Setup/Update data lapak
+        Route::post('/shop', [SellerController::class, 'storeShop']);
 
-    // Admin/List routes (bisa diakses buyer & seller)
-    Route::get('/users', [App\Http\Controllers\Api\AdminController::class, 'getAllUsers']);
-    Route::get('/users/buyers', [App\Http\Controllers\Api\AdminController::class, 'getAllBuyers']);
-    Route::get('/users/sellers', [App\Http\Controllers\Api\AdminController::class, 'getAllSellers']);
-    Route::get('/users/sellers/shops', [App\Http\Controllers\Api\AdminController::class, 'getAllSellersWithShops']);
-    Route::get('/users/stats', [App\Http\Controllers\Api\AdminController::class, 'getUserStats']);
-    Route::get('/users/{userId}', [App\Http\Controllers\Api\AdminController::class, 'getUserDetail']);
-});
+        // Update status live (ON/OFF)
+        Route::post('/status', [SellerController::class, 'updateStatus']);
 
-Route::middleware('auth:sanctum')->post('/logout', function (Request $request) {
-    $request->user()->currentAccessToken()->delete();
+        // Menu Management
+        Route::post('/menu', [SellerController::class, 'addMenu']);
+        Route::put('/menu/{menuId}', [SellerController::class, 'updateMenu']);
+        Route::delete('/menu/{menuId}', [SellerController::class, 'deleteMenu']);
 
-    return response()->json(['message' => 'Logout berhasil']);
+        // AI Features
+        Route::get('/ai-insight', [SellerController::class, 'getAiInsight']);
+        Route::get('/market-analysis', [SellerController::class, 'getMarketAnalysis']);
+    });
+
+    // ==========================================
+    // ADMIN ROUTES (Optional - jika ada AdminController)
+    // ==========================================
+
+    Route::prefix('admin')->group(function () {
+        Route::get('/users', [App\Http\Controllers\Api\AdminController::class, 'getAllUsers']);
+        Route::get('/buyers', [App\Http\Controllers\Api\AdminController::class, 'getAllBuyers']);
+        Route::get('/sellers', [App\Http\Controllers\Api\AdminController::class, 'getAllSellers']);
+        Route::get('/sellers/shops', [App\Http\Controllers\Api\AdminController::class, 'getAllSellersWithShops']);
+        Route::get('/stats', [App\Http\Controllers\Api\AdminController::class, 'getUserStats']);
+        Route::get('/users/{userId}', [App\Http\Controllers\Api\AdminController::class, 'getUserDetail']);
+    });
+
+    // ==========================================
+    // LOGOUT
+    // ==========================================
+
+    Route::post('/logout', function (Request $request) {
+        $request->user()->currentAccessToken()->delete();
+
+        return response()->json(['message' => 'Logout berhasil']);
+    });
 });
