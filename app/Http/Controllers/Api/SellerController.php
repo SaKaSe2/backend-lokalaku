@@ -43,8 +43,14 @@ class SellerController extends Controller
                 'description' => $shop->description,
                 'category' => $shop->category,
                 'whatsapp_number' => $shop->whatsapp_number,
-                'profile_image' => $shop->profile_image ? asset('storage/' . $shop->profile_image) : null,
-                'cart_image' => $shop->cart_image ? asset('storage/' . $shop->cart_image) : null,
+                'profile_image' => $shop->profile_image
+                    ? config('app.url') . '/storage/' . $shop->profile_image
+                    : null,
+
+                'cart_image' => $shop->cart_image
+                    ? config('app.url') . '/storage/' . $shop->cart_image
+                    : null,
+
                 'is_live' => $shop->is_live,
                 'latitude' => $shop->latitude,
                 'longitude' => $shop->longitude,
@@ -102,7 +108,7 @@ class SellerController extends Controller
                 'id' => $menu->id,
                 'name' => $menu->name,
                 'price' => $menu->price,
-                'image' => asset('storage/' . $menu->image)
+                'image' => config('app.url') . '/storage/' . $menu->image
             ]
         ]);
     }
@@ -151,8 +157,14 @@ class SellerController extends Controller
                 'description' => $shop->description,
                 'category' => $shop->category,
                 'whatsapp_number' => $shop->whatsapp_number,
-                'profile_image' => $shop->profile_image ? asset('storage/' . $shop->profile_image) : null,
-                'cart_image' => $shop->cart_image ? asset('storage/' . $shop->cart_image) : null,
+                'profile_image' => $shop->profile_image
+                    ? config('app.url') . '/storage/' . $shop->profile_image
+                    : null,
+
+                'cart_image' => $shop->cart_image
+                    ? config('app.url') . '/storage/' . $shop->cart_image
+                    : null,
+
                 'is_live' => $shop->is_live,
                 'latitude' => $shop->latitude,
                 'longitude' => $shop->longitude,
@@ -161,7 +173,7 @@ class SellerController extends Controller
                         'id' => $menu->id,
                         'name' => $menu->name,
                         'price' => $menu->price,
-                        'image' => asset('storage/' . $menu->image)
+                        'image' => config('app.url') . '/storage/' . $menu->image
                     ];
                 })
             ]
@@ -199,7 +211,7 @@ class SellerController extends Controller
                 'id' => $menu->id,
                 'name' => $menu->name,
                 'price' => $menu->price,
-                'image' => asset('storage/' . $menu->image)
+                'image' => config('app.url') . '/storage/' . $menu->image
             ]
         ]);
     }
