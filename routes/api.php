@@ -139,6 +139,15 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
         // Get detail toko beserta menu
         Route::get('/shop/{shopId}', [BuyerController::class, 'getShopDetail']);
+
+        Route::get('/shops', [BuyerController::class, 'getAllShops']);
+        Route::get('/shops/simple', [BuyerController::class, 'getAllShopsSimple']); // Alternatif sederhana
+        Route::get('/shops/categories', [BuyerController::class, 'getShopCategories']);
+        Route::get('/shops/statistics', [BuyerController::class, 'getShopStatistics']);
+        // Route::get('/shops/{shopId}', [BuyerController::class, 'getShopDetail']);
+
+        // Route yang sudah ada
+Route::get('/map-data', [BuyerController::class, 'getMapData']);
     });
 
     // ==========================================
