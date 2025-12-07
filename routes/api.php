@@ -159,7 +159,7 @@ Route::get('/map-data', [BuyerController::class, 'getMapData']);
         Route::get('/dashboard', [SellerController::class, 'getDashboard']);
 
         // Setup/Update data lapak
-        Route::post('/shop', [SellerController::class, 'storeShop']);
+        Route::post('/setup', [SellerController::class, 'storeShop']);
 
         // Update status live (ON/OFF)
         Route::post('/status', [SellerController::class, 'updateStatus']);
