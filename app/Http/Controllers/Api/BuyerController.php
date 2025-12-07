@@ -21,6 +21,125 @@ class BuyerController extends Controller
         $this->kolosalService = $kolosalService;
     }
 
+    /**
+     * Public map data endpoint used by frontend (nearby shops + weather + AI recommendation).
+     * Accepts GET query params or POST JSON body: latitude, longitude, radius
+     */
+    public function getMapData(Request $request)
+    {
+        try {
+            $latitude = $request->input('latitude');
+            $longitude = $request->input('longitude');
+            $radiusKm = $request->input('radius', 2);
+
+            if (!is_numeric($latitude) || !is_numeric($longitude)) {
+                return response()->json(['error' => 'latitude and longitude are required'], 422);
+            }
+
+            $latitude = (float) $latitude;
+            $longitude = (float) $longitude;
+            $radiusKm = (float) $radiusKm;
+
+            // Haversine distance (km)
+            $shops = Shop::selectRaw(
+                "*, (6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude)))) AS distance",
+                [$latitude, $longitude, $latitude]
+            )
+                ->having('distance', '<=', $radiusKm)
+                ->orderBy('distance', 'asc')
+                ->limit(100)
+                ->get();
+
+            $nearby = $shops->map(function ($shop) {
+                return [
+                    'id' => $shop->id,
+                    'name' => $shop->name,
+                    'description' => $shop->description,
+                    'category' => $shop->category,
+                    'whatsapp' => $shop->whatsapp_number ?? null,
+                    'profile_image' => $shop->profile_image ? asset('storage/' . $shop->profile_image) : null,
+                    'latitude' => (float) $shop->latitude,
+                    'longitude' => (float) $shop->longitude,
+                    'is_live' => (bool) $shop->is_live,
+                    'distance' => isset($shop->distance) ? round($shop->distance * 1000) . ' m' : null,
+                    'menus' => $shop->menus()->limit(5)->get()->map(function ($m) {
+                        return [
+                            'id' => $m->id,
+                            'name' => $m->name,
+                            'price' => $m->price,
+                            'image' => $m->image ? asset('storage/' . $m->image) : null,
+                        ];
+                    })->toArray(),
+                ];
+            })->toArray();
+
+            $weather = $this->weatherService->getCurrentWeather($latitude, $longitude);
+            // Ensure weather has expected keys to avoid undefined index errors in AI service
+            $weatherDefaults = [
+                'temperature' => null,
+                'feels_like' => null,
+                'description' => '',
+                'main' => '',
+                'humidity' => null,
+                'wind_speed' => null,
+            ];
+            if (!is_array($weather)) {
+                $weather = $weatherDefaults;
+            } else {
+                $weather = array_merge($weatherDefaults, $weather);
+            }
+
+            $ai = $this->kolosalService->getUserRecommendation($weather, $latitude, $longitude, $nearby);
+
+            return response()->json([
+                'weather' => $weather,
+                'nearby_shops' => $nearby,
+                'ai_recommendation' => $ai,
+                'search_radius' => $radiusKm,
+                'total_shops' => count($nearby),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error in getMapData: ' . $e->getMessage(), ['trace' => $e->getTraceAsString(), 'request' => $request->all()]);
+            return response()->json(['error' => 'Failed to get map data', 'message' => config('app.debug') ? $e->getMessage() : null], 500);
+        }
+    }
+
+    /**
+     * Return detailed shop info (with menus) for the frontend.
+     */
+    public function getShopDetail($shopId)
+    {
+        try {
+            $shop = Shop::with('menus')->find($shopId);
+            if (!$shop) {
+                return response()->json(['error' => 'Shop not found'], 404);
+            }
+
+            $data = [
+                'id' => $shop->id,
+                'name' => $shop->name,
+                'description' => $shop->description,
+                'profile_image' => $shop->profile_image ? asset('storage/' . $shop->profile_image) : null,
+                'is_live' => (bool) $shop->is_live,
+                'whatsapp_number' => $shop->whatsapp_number,
+                'menus' => $shop->menus->map(function ($m) {
+                    return [
+                        'id' => $m->id,
+                        'name' => $m->name,
+                        'price' => $m->price,
+                        'description' => $m->description,
+                        'image' => $m->image ? asset('storage/' . $m->image) : null,
+                    ];
+                })->toArray(),
+            ];
+
+            return response()->json($data);
+        } catch (\Exception $e) {
+            Log::error('Error in getShopDetail: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch shop detail', 'message' => config('app.debug') ? $e->getMessage() : null], 500);
+        }
+    }
+
     // ... method getMapData dan getShopDetail yang sudah ada ...
 
     /**

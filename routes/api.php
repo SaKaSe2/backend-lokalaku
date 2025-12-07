@@ -153,8 +153,10 @@ Route::get('/map-data', [BuyerController::class, 'getMapData']);
     // ==========================================
     // SELLER ROUTES
     // ==========================================
+    
 
     Route::prefix('seller')->group(function () {
+        Route::get('/', [SellerController::class, 'getDashboard']);
         // Dashboard - Cek data lapak
         Route::get('/dashboard', [SellerController::class, 'getDashboard']);
 
