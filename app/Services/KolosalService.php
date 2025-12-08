@@ -16,14 +16,75 @@ class KolosalService
         $this->baseUrl = env('KOLOSAL_BASE_URL', 'https://api.kolosal.ai/v1');
     }
 
+    private function getAddressFromCoordinates($lat, $lon)
+    {
+        try {
+            // User-Agent wajib ada untuk kebijakan OpenStreetMap
+            $response = Http::withHeaders([
+                'User-Agent' => 'LokalakuApp/1.0 (Hackathon)'
+            ])->timeout(5)->get("https://nominatim.openstreetmap.org/reverse", [
+                'format' => 'json',
+                'lat' => trim($lat),
+                'lon' => trim($lon),
+                'zoom' => 18,
+                'addressdetails' => 1
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+
+                // Ambil landmark atau nama jalan
+                $road = $data['address']['road'] ?? '';
+                $suburb = $data['address']['suburb'] ?? $data['address']['village'] ?? '';
+                $city = $data['address']['city'] ?? $data['address']['town'] ?? '';
+                $landmark = $data['address']['amenity'] ?? $data['address']['building'] ?? '';
+
+                $addressParts = array_filter([$landmark, $road, $suburb, $city]);
+                return implode(", ", $addressParts);
+            }
+        } catch (\Exception $e) {
+            Log::warning("Geocoding failed: " . $e->getMessage());
+        }
+
+        return "Koordinat $lat, $lon";
+    }
+
     public function getRecommendation($shopCategory, $currentLocation)
     {
-        $time = now()->format('H:i');
+        // 1. FIX TIMEZONE: Paksa ke WIB (Asia/Jakarta)
+        // Agar tidak dianggap siang saat malam hari
+        $timeObj = now()->setTimezone('Asia/Jakarta');
+        $time = $timeObj->format('H:i');
+        $date = $timeObj->format('l, d F Y');
 
-        $prompt = "Kamu adalah konsultan untuk pedagang keliling ($shopCategory). " .
-            "Sekarang jam $time. Lokasi pedagang di koordinat $currentLocation. " .
-            "Berikan 1 saran lokasi spesifik (nama tempat umum seperti sekolah/kantor/taman) di sekitar situ yang sedang ramai potensial pembeli saat ini. " .
-            "Jawab dalam format JSON: { \"message\": \"Saran singkat menyemangati\", \"target_location\": \"Nama Tempat\" }.";
+        // Tentukan waktu deskriptif (Pagi/Siang/Sore/Malam)
+        $hour = $timeObj->hour;
+        if ($hour >= 5 && $hour < 11) $period = "Pagi";
+        elseif ($hour >= 11 && $hour < 15) $period = "Siang";
+        elseif ($hour >= 15 && $hour < 18) $period = "Sore";
+        else $period = "Malam";
+
+        // 2. FIX LOCATION: Ubah angka jadi alamat
+        $coords = explode(',', $currentLocation);
+        $lat = $coords[0] ?? 0;
+        $lon = $coords[1] ?? 0;
+
+        // Panggil helper geocoding
+        $realAddress = $this->getAddressFromCoordinates($lat, $lon);
+
+        // 3. PROMPT ENGINEERING YANG LEBIH KONTEKSTUAL
+        $prompt = "Kamu adalah konsultan strategi lapangan untuk pedagang keliling ($shopCategory). \n" .
+            "Saat ini adalah hari $date, Pukul $time ($period). \n" .
+            "Posisi pedagang saat ini terdeteksi di: **$realAddress**. \n\n" .
+
+            "TUGAS: Analisa area $realAddress tersebut. \n" .
+            "Berikan 1 saran lokasi spesifik (nama tempat umum/gedung/taman) DALAM RADIUS 500 METER " .
+            "dari alamat tersebut yang potensial ramai pembeli pada jam $time $period ini. \n\n" .
+
+            "Contoh logika: Jika malam, cari taman pasar malam/alun-alun. Jika siang, cari sekolah/kantor. \n" .
+            "JANGAN menyarankan tempat yang jauh (beda kecamatan/kota). \n\n" .
+
+            "Jawab JSON: { \"message\": \"Kalimat penyemangat + alasan singkat (Sebutkan 'Selamat $period')\", \"target_location\": \"Nama Tempat Spesifik\" }.";
 
         try {
             $response = Http::timeout(30)
@@ -32,47 +93,47 @@ class KolosalService
                     'Content-Type' => 'application/json',
                 ])
                 ->post($this->baseUrl . '/chat/completions', [
-                    'model' => 'Claude Sonnet 4.5', // Sesuai screenshot
+                    'model' => 'Claude Sonnet 4.5',
                     'messages' => [
                         ['role' => 'user', 'content' => $prompt]
                     ],
                     'max_tokens' => 500
                 ]);
 
-            Log::info('Kolosal Seller API Response', [
-                'status' => $response->status(),
-                'body' => $response->body()
+            Log::info('Kolosal Seller Insight', [
+                'input_location' => $realAddress,
+                'input_time' => "$time ($period)",
+                'response' => $response->body()
             ]);
 
             if ($response->successful()) {
                 $data = $response->json();
-
                 if (isset($data['choices'][0]['message']['content'])) {
                     $content = $data['choices'][0]['message']['content'];
+
+                    // Bersihkan format Markdown JSON (```json ... ```)
+                    $content = str_replace(['```json', '```'], '', $content);
+
                     $decoded = json_decode($content, true);
 
                     if ($decoded && isset($decoded['message'])) {
                         return $decoded;
                     }
 
+                    // Regex Fallback
                     if (preg_match('/\{.*?\}/s', $content, $matches)) {
-                        $parsed = json_decode($matches[0], true);
-                        if ($parsed) return $parsed;
+                        return json_decode($matches[0], true);
                     }
                 }
-            } else {
-                Log::error('Kolosal Seller API Error', [
-                    'status' => $response->status(),
-                    'error' => $response->json()
-                ]);
             }
         } catch (\Exception $e) {
             Log::error('Kolosal Seller Exception: ' . $e->getMessage());
         }
 
+        // Fallback Manual jika API Error
         return [
-            'message' => "Cari keramaian di sekitar pusat kota, semangat!",
-            'target_location' => "Pusat Kota"
+            'message' => "Selamat $period! Coba keliling ke area perumahan atau tongkrongan terdekat.",
+            'target_location' => "Area Perumahan/Taman"
         ];
     }
 
