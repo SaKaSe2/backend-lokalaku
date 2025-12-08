@@ -17,6 +17,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // 🔥 CORS MIDDLEWARE (WAJIB)
         $middleware->append(HandleCors::class);
 
+        $middleware->trustProxies(at: '*');
+
         $middleware->group('api', [
             \Illuminate\Http\Middleware\HandleCors::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
