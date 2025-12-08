@@ -2,14 +2,17 @@
 
 use Illuminate\Support\Str;
 
+$databaseUrl = env('MYSQL_URL') ?: env('DATABASE_URL');
+
+// Parsing Railway DATABASE_URL jika ada
 if ($databaseUrl = env('DATABASE_URL')) {
     $url = parse_url($databaseUrl);
 
     putenv('DB_CONNECTION=mysql');
-    putenv('DB_HOST=' . ($url['host'] ?? ''));
+    putenv('DB_HOST=' . ($url['host'] ?? 'localhost'));
     putenv('DB_PORT=' . ($url['port'] ?? '3306'));
-    putenv('DB_DATABASE=' . ltrim($url['path'] ?? '', '/'));
-    putenv('DB_USERNAME=' . ($url['user'] ?? ''));
+    putenv('DB_DATABASE=' . ltrim($url['path'] ?? '/railway', '/'));
+    putenv('DB_USERNAME=' . ($url['user'] ?? 'root'));
     putenv('DB_PASSWORD=' . ($url['pass'] ?? ''));
 }
 
@@ -159,7 +162,7 @@ return [
 
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
-            'prefix' => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')) . '-database-'),
+            'prefix' => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')).'-database-'),
             'persistent' => env('REDIS_PERSISTENT', false),
         ],
 
