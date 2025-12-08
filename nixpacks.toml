@@ -13,7 +13,7 @@ cmds = [
 cmds = [
   'php artisan config:cache',
   'php artisan route:cache',
-  'php artisan migrate --force'  # ✅ Auto migrate saat deploy
+  'php artisan migrate --force'
 ]
 
 [start]

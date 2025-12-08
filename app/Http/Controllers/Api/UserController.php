@@ -43,7 +43,7 @@ class UserController extends Controller
 
             $userId = Auth::id();
 
-            // Update menggunakan DB Query Builder
+
             DB::table('users')
                 ->where('id', $userId)
                 ->update([
@@ -52,7 +52,7 @@ class UserController extends Controller
                     'updated_at' => now(),
                 ]);
 
-            // Ambil data user yang sudah diupdate
+
             $user = User::find($userId);
 
             return response()->json([

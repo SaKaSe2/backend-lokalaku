@@ -21,18 +21,18 @@ class BuyerController extends Controller
         $this->kolosalService = $kolosalService;
     }
 
-    // ... method getMapData dan getShopDetail yang sudah ada ...
+
 
     /**
      * Mendapatkan semua toko
-     * 
+     *
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function getAllShops(Request $request)
     {
         try {
-            // Validasi parameter opsional
+
             $request->validate([
                 'category' => 'nullable|string',
                 'search' => 'nullable|string|max:100',
@@ -48,20 +48,20 @@ class BuyerController extends Controller
 
             $query = Shop::query();
 
-            // Filter berdasarkan kategori
+
             if ($request->has('category') && $request->category) {
                 $query->where('category', $request->category);
             }
 
-            // Filter berdasarkan status live
+
             if ($request->has('is_live')) {
                 $query->where('is_live', filter_var($request->is_live, FILTER_VALIDATE_BOOLEAN));
             } else {
-                // Default hanya tampilkan toko yang live
+
                 $query->where('is_live', true);
             }
 
-            // Pencarian berdasarkan nama
+
             if ($request->has('search') && $request->search) {
                 $searchTerm = '%' . $request->search . '%';
                 $query->where(function($q) use ($searchTerm) {
@@ -71,11 +71,11 @@ class BuyerController extends Controller
                 });
             }
 
-            // Jika ada koordinat, hitung jarak dan sort berdasarkan jarak
+
             if ($request->has('latitude') && $request->has('longitude')) {
                 $latitude = $request->latitude;
                 $longitude = $request->longitude;
-                
+
                 $query->selectRaw("
                     *,
                     (6371 * acos(
@@ -87,38 +87,38 @@ class BuyerController extends Controller
                     )) AS distance
                 ", [$latitude, $longitude, $latitude]);
 
-                // Jika sort_by adalah distance, gunakan distance untuk sorting
+
                 if ($request->get('sort_by') === 'distance') {
                     $sortOrder = $request->get('sort_order', 'asc');
                     $query->orderBy('distance', $sortOrder);
                 } else if (!$request->has('sort_by')) {
-                    // Default sort by distance jika ada koordinat
+
                     $query->orderBy('distance', 'asc');
                 }
             }
 
-            // Sorting
+
             if ($request->has('sort_by') && $request->sort_by !== 'distance') {
                 $sortOrder = $request->get('sort_order', 'asc');
                 $query->orderBy($request->sort_by, $sortOrder);
             } else if (!$request->has('latitude') || !$request->has('longitude')) {
-                // Default sorting jika tidak ada koordinat
+
                 $query->orderBy('created_at', 'desc');
             }
 
-            // Include menus jika diminta
+
             if ($request->boolean('with_menus')) {
                 $query->with(['menus' => function($query) {
-                    // Hapus kondisi is_available karena kolom tidak ada
+
                     $query->orderBy('name', 'asc');
                 }]);
             }
 
-            // Pagination
+
             $perPage = $request->get('per_page', 20);
             $shops = $query->paginate($perPage);
 
-            // Transform data
+
             $shopsData = $shops->map(function ($shop) use ($request) {
                 $data = [
                     'id' => $shop->id,
@@ -135,13 +135,13 @@ class BuyerController extends Controller
                     'updated_at' => $shop->updated_at->toDateTimeString(),
                 ];
 
-                // Tambahkan distance jika ada
+
                 if (isset($shop->distance)) {
                     $data['distance_km'] = round($shop->distance, 2);
                     $data['distance_m'] = round($shop->distance * 1000);
                 }
 
-                // Tambahkan menus jika diminta
+
                 if ($request->boolean('with_menus') && $shop->relationLoaded('menus')) {
                     $data['menus'] = $shop->menus->map(function ($menu) {
                         return [
@@ -150,14 +150,14 @@ class BuyerController extends Controller
                             'description' => $menu->description,
                             'price' => $menu->price,
                             'image' => $menu->image ? asset('storage/' . $menu->image) : null,
-                            // Hapus is_available karena kolom tidak ada
+
                         ];
                     });
                 }
 
-                // Tambahkan total menu jika tidak load semua menu
+
                 if (!$request->boolean('with_menus')) {
-                    // Hapus kondisi is_available
+
                     $data['total_menus'] = $shop->menus()->count();
                 }
 
@@ -201,21 +201,21 @@ class BuyerController extends Controller
 
     /**
      * Mendapatkan semua kategori toko yang tersedia
-     * 
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     public function getShopCategories()
     {
         try {
-            // Mengambil semua kategori unik dari toko yang live
+
             $categories = Shop::where('is_live', true)
                 ->distinct()
                 ->pluck('category')
-                ->filter() // Hapus nilai null
+                ->filter()
                 ->values()
                 ->toArray();
 
-            // Jika ingin kategori default jika tidak ada data
+
             if (empty($categories)) {
                 $categories = ['Makanan', 'Minuman', 'Snack', 'Lainnya'];
             }
@@ -239,7 +239,7 @@ class BuyerController extends Controller
 
     /**
      * Mendapatkan statistik toko
-     * 
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     public function getShopStatistics()
@@ -247,8 +247,8 @@ class BuyerController extends Controller
         try {
             $totalShops = Shop::count();
             $liveShops = Shop::where('is_live', true)->count();
-            
-            // Query untuk distribusi kategori
+
+
             $categories = Shop::select('category', DB::raw('COUNT(*) as count'))
                 ->whereNotNull('category')
                 ->where('category', '!=', '')

@@ -14,7 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // 🔥 CORS MIDDLEWARE (WAJIB)
+
         $middleware->append(HandleCors::class);
 
         $middleware->trustProxies(at: '*');
@@ -25,7 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // Handle authentication exception untuk API
+
         $exceptions->render(function (AuthenticationException $e, $request) {
             if ($request->is('api/*') || $request->expectsJson()) {
                 return response()->json([

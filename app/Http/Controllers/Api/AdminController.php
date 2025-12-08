@@ -16,12 +16,12 @@ class AdminController extends Controller
     {
         $query = User::query();
 
-        // Filter by role (optional)
+
         if ($request->has('role')) {
             $query->where('role', $request->role);
         }
 
-        // Search by name, username, or email (optional)
+
         if ($request->has('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
@@ -132,14 +132,14 @@ class AdminController extends Controller
             });
         }
 
-        // Filter by shop status (live/offline)
+
         if ($request->has('is_live')) {
             $query->whereHas('shop', function($q) use ($request) {
                 $q->where('is_live', $request->is_live);
             });
         }
 
-        // Filter by category
+
         if ($request->has('category')) {
             $query->whereHas('shop', function($q) use ($request) {
                 $q->where('category', $request->category);

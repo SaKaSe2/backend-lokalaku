@@ -218,7 +218,7 @@ class SellerController extends Controller
         $shop = Shop::where('user_id', Auth::id())->firstOrFail();
         $menu = $shop->menus()->findOrFail($menuId);
 
-        // Hapus gambar dari storage
+
         if ($menu->image) {
             Storage::disk('public')->delete($menu->image);
         }
@@ -234,7 +234,7 @@ class SellerController extends Controller
     {
         $shop = Shop::where('user_id', Auth::id())->firstOrFail();
 
-        // Validasi: Seller harus set lokasi dulu (Live)
+
         if (!$shop->latitude || !$shop->longitude) {
             return response()->json([
                 'message' => 'Harap aktifkan status LIVE terlebih dahulu agar kami tahu lokasi Anda.',
@@ -244,10 +244,10 @@ class SellerController extends Controller
 
         $lat = $shop->latitude;
         $lng = $shop->longitude;
-        $radius = 1; // 1 KM
+        $radius = 1;
 
-        // 1. Query Toko Lain (Kompetitor) dalam radius 1 KM
-        // Menggunakan Raw SQL untuk menghitung jarak (Haversine Formula)
+
+
         $nearbyShops = Shop::select('shops.*')
             ->selectRaw(
                 "(6371 * acos(cos(radians(?)) * cos(radians(latitude))
@@ -256,21 +256,21 @@ class SellerController extends Controller
                 [$lat, $lng, $lat]
             )
             ->having('distance', '<', $radius)
-            ->where('id', '!=', $shop->id) // Jangan hitung toko sendiri
+            ->where('id', '!=', $shop->id)
             ->orderBy('distance')
             ->get();
 
-        // 2. Format data ringkas untuk dikirim ke AI (Hemat Token)
+
         $competitorData = $nearbyShops->map(function ($s) {
             return "- {$s->name} (Jualan: {$s->category}) jarak " . number_format($s->distance * 1000, 0) . "m";
         })->implode("\n");
 
-        // Jika tidak ada kompetitor
+
         if ($nearbyShops->isEmpty()) {
             $competitorData = "Belum ada pedagang lain dalam radius 1km (Wilayah kosong).";
         }
 
-        // 3. Panggil AI Service
+
         $analysis = $aiService->analyzeMarketOpportunities(
             $competitorData,
             $shop->category,
