@@ -29,37 +29,35 @@ class BuyerController extends Controller
         try {
 
             if ($request->isMethod('get')) {
-
-                $latitude = $request->query('latitude');
+                $latitude  = $request->query('latitude');
                 $longitude = $request->query('longitude');
-                $radius = $request->query('radius', 1);
+                $radius    = $request->query('radius', 2);
             } else {
-
                 $request->validate([
-                    'latitude' => 'required|numeric',
+                    'latitude'  => 'required|numeric',
                     'longitude' => 'required|numeric',
-                    'radius' => 'nullable|numeric|min:0.1|max:10'
+                    'radius'    => 'nullable|numeric|min:0.1|max:10'
                 ]);
-
-                $latitude = $request->latitude;
-                $longitude = $request->longitude;
-                $radius = $request->get('radius', 1);
+                $latitude  = $request->input('latitude');
+                $longitude = $request->input('longitude');
+                $radius    = $request->input('radius', 2);
             }
 
 
             if (!$latitude || !$longitude) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'Latitude dan longitude wajib diisi'
+                    'error'   => 'Latitude dan longitude wajib diisi',
+                    'debug'   => ['lat' => $latitude, 'lng' => $longitude]
                 ], 400);
             }
 
-            Log::info('BuyerController getMapData called', [
-                'method' => $request->method(),
-                'latitude' => $latitude,
-                'longitude' => $longitude,
-                'radius' => $radius,
-                'is_authenticated' => auth()
+            Log::info('getMapData dipanggil', [
+                'method'     => $request->method(),
+                'lat'        => $latitude,
+                'lng'        => $longitude,
+                'radius_km'  => $radius,
+                'auth'       => $request->user() ? 'logged in' : 'guest'
             ]);
 
 
@@ -67,49 +65,49 @@ class BuyerController extends Controller
 
 
             $shops = Shop::selectRaw("
-                *,
+                shops.*,
                 (6371 * acos(
-                    cos(radians(?))
-                    * cos(radians(latitude))
-                    * cos(radians(longitude) - radians(?))
-                    + sin(radians(?))
-                    * sin(radians(latitude))
+                    cos(radians(?)) *
+                    cos(radians(latitude)) *
+                    cos(radians(longitude) - radians(?)) +
+                    sin(radians(?)) *
+                    sin(radians(latitude))
                 )) AS distance
             ", [$latitude, $longitude, $latitude])
                 ->where('is_live', true)
-                ->having('distance', '<=', $radius)
-                ->orderBy('distance', 'asc')
+                ->havingRaw('distance <= ?', [$radius])
+                ->orderBy('distance')
                 ->with('menus')
                 ->get();
 
-            Log::info('Shops query result', [
-                'total_shops_in_db' => Shop::where('is_live', true)->count(),
-                'shops_in_radius' => $shops->count(),
-                'radius_km' => $radius
+            Log::info('Hasil query shop', [
+                'total_live_shops' => Shop::where('is_live', true)->count(),
+                'shops_ditemukan'  => $shops->count(),
+                'radius'           => $radius . ' km'
             ]);
 
 
             $nearbyShops = $shops->map(function ($shop) {
                 return [
-                    'id' => $shop->id,
-                    'name' => $shop->name,
-                    'description' => $shop->description,
-                    'category' => $shop->category,
+                    'id'              => $shop->id,
+                    'name'            => $shop->name,
+                    'description'     => $shop->description ?? '',
+                    'category'        => $shop->category,
                     'whatsapp_number' => $shop->whatsapp_number,
-                    'profile_image' => $shop->profile_image ? asset('storage/' . $shop->profile_image) : null,
-                    'cart_image' => $shop->cart_image ? asset('storage/' . $shop->cart_image) : null,
-                    'latitude' => (float) $shop->latitude,
-                    'longitude' => (float) $shop->longitude,
-                    'distance' => round($shop->distance * 1000),
-                    'distance_km' => round($shop->distance, 2),
-                    'is_live' => (bool) $shop->is_live,
-                    'menus' => $shop->menus->map(function ($menu) {
+                    'profile_image'   => $shop->profile_image ? asset('storage/' . $shop->profile_image) : null,
+                    'cart_image'      => $shop->cart_image ? asset('storage/' . $shop->cart_image) : null,
+                    'latitude'        => (float) $shop->latitude,
+                    'longitude'       => (float) $shop->longitude,
+                    'distance'        => round($shop->distance * 1000),
+                    'distance_km'     => round($shop->distance, 2),
+                    'is_live'         => true,
+                    'menus'           => $shop->menus->map(function ($menu) {
                         return [
-                            'id' => $menu->id,
-                            'name' => $menu->name,
-                            'description' => $menu->description,
-                            'price' => $menu->price,
-                            'image' => $menu->image ? asset('storage/' . $menu->image) : null,
+                            'id'          => $menu->id,
+                            'name'        => $menu->name,
+                            'price'       => $menu->price,
+                            'description' => $menu->description ?? '',
+                            'image'       => $menu->image ? asset('storage/' . $menu->image) : null,
                         ];
                     })
                 ];
@@ -126,34 +124,27 @@ class BuyerController extends Controller
                         $nearbyShops->toArray()
                     );
                 } catch (\Exception $e) {
-                    Log::warning('AI Recommendation failed: ' . $e->getMessage());
+                    Log::warning('AI gagal: ' . $e->getMessage());
                 }
             }
 
             return response()->json([
                 'success' => true,
-                'data' => [
-                    'weather' => $weather,
-                    'nearby_shops' => $nearbyShops,
-                    'total_shops' => $nearbyShops->count(),
-                    'recommendation' => $recommendation,
-                    'user_location' => [
-                        'latitude' => (float) $latitude,
-                        'longitude' => (float) $longitude
-                    ],
+                'data'    => [
+                    'weather'         => $weather,
+                    'nearby_shops'    => $nearbyShops,
+                    'total_shops'     => $nearbyShops->count(),
+                    'recommendation'  => $recommendation,
+                    'user_location'   => ['latitude' => (float)$latitude, 'longitude' => (float)$longitude],
                     'search_radius_km' => $radius
                 ]
             ]);
         } catch (\Exception $e) {
-            Log::error('Error in getMapData', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
+            Log::error('getMapData error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return response()->json([
                 'success' => false,
-                'error' => 'Terjadi kesalahan saat mengambil data peta',
-                'message' => config('app.debug') ? $e->getMessage() : null
+                'error'   => 'Server error',
+                'message' => app()->isProduction() ? null : $e->getMessage()
             ], 500);
         }
     }
