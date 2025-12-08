@@ -21,7 +21,144 @@ class BuyerController extends Controller
         $this->kolosalService = $kolosalService;
     }
 
+    /**
+     * Get map data with nearby shops, weather, and AI recommendations
+     */
+    public function getMapData(Request $request)
+    {
+        try {
+            $request->validate([
+                'latitude' => 'required|numeric',
+                'longitude' => 'required|numeric',
+                'radius' => 'nullable|numeric|min:0.1|max:10'
+            ]);
 
+            $latitude = $request->latitude;
+            $longitude = $request->longitude;
+            $radius = $request->get('radius', 1);
+
+            $weather = $this->weatherService->getCurrentWeather($latitude, $longitude);
+
+            $shops = Shop::selectRaw("
+            *,
+            (6371 * acos(
+                cos(radians(?))
+                * cos(radians(latitude))
+                * cos(radians(longitude) - radians(?))
+                + sin(radians(?))
+                * sin(radians(latitude))
+            )) AS distance
+        ", [$latitude, $longitude, $latitude])
+                ->where('is_live', true)
+                ->having('distance', '<=', $radius)
+                ->orderBy('distance', 'asc')
+                ->with('menus')
+                ->get();
+
+            $nearbyShops = $shops->map(function ($shop) {
+                return [
+                    'id' => $shop->id,
+                    'name' => $shop->name,
+                    'description' => $shop->description,
+                    'category' => $shop->category,
+                    'whatsapp_number' => $shop->whatsapp_number,
+                    'profile_image' => $shop->profile_image ? asset('storage/' . $shop->profile_image) : null,
+                    'cart_image' => $shop->cart_image ? asset('storage/' . $shop->cart_image) : null,
+                    'latitude' => (float) $shop->latitude,
+                    'longitude' => (float) $shop->longitude,
+                    'distance' => round($shop->distance * 1000),
+                    'distance_km' => round($shop->distance, 2),
+                    'is_live' => (bool) $shop->is_live,
+                    'menus' => $shop->menus->map(function ($menu) {
+                        return [
+                            'id' => $menu->id,
+                            'name' => $menu->name,
+                            'description' => $menu->description,
+                            'price' => $menu->price,
+                            'image' => $menu->image ? asset('storage/' . $menu->image) : null,
+                        ];
+                    })
+                ];
+            });
+
+            $recommendation = null;
+            if ($weather && $nearbyShops->isNotEmpty()) {
+                try {
+                    $recommendation = $this->kolosalService->getUserRecommendation(
+                        $weather,
+                        $latitude,
+                        $longitude,
+                        $nearbyShops->toArray()
+                    );
+                } catch (\Exception $e) {
+                    Log::warning('AI Recommendation failed: ' . $e->getMessage());
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'weather' => $weather,
+                    'nearby_shops' => $nearbyShops,
+                    'total_shops' => $nearbyShops->count(),
+                    'recommendation' => $recommendation,
+                    'user_location' => [
+                        'latitude' => $latitude,
+                        'longitude' => $longitude
+                    ],
+                    'search_radius_km' => $radius
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error in getMapData: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Terjadi kesalahan saat mengambil data peta',
+                'message' => config('app.debug') ? $e->getMessage() : null
+            ], 500);
+        }
+    }
+
+    /**
+     * Get shop detail by ID
+     */
+    public function getShopDetail($shopId)
+    {
+        try {
+            $shop = Shop::with('menus')->findOrFail($shopId);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id' => $shop->id,
+                    'name' => $shop->name,
+                    'description' => $shop->description,
+                    'category' => $shop->category,
+                    'whatsapp_number' => $shop->whatsapp_number,
+                    'profile_image' => $shop->profile_image ? asset('storage/' . $shop->profile_image) : null,
+                    'cart_image' => $shop->cart_image ? asset('storage/' . $shop->cart_image) : null,
+                    'latitude' => (float) $shop->latitude,
+                    'longitude' => (float) $shop->longitude,
+                    'is_live' => (bool) $shop->is_live,
+                    'menus' => $shop->menus->map(function ($menu) {
+                        return [
+                            'id' => $menu->id,
+                            'name' => $menu->name,
+                            'description' => $menu->description,
+                            'price' => $menu->price,
+                            'image' => $menu->image ? asset('storage/' . $menu->image) : null,
+                        ];
+                    })
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error in getShopDetail: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Toko tidak ditemukan'
+            ], 404);
+        }
+    }
 
     /**
      * Mendapatkan semua toko
@@ -64,10 +201,10 @@ class BuyerController extends Controller
 
             if ($request->has('search') && $request->search) {
                 $searchTerm = '%' . $request->search . '%';
-                $query->where(function($q) use ($searchTerm) {
+                $query->where(function ($q) use ($searchTerm) {
                     $q->where('name', 'LIKE', $searchTerm)
-                      ->orWhere('description', 'LIKE', $searchTerm)
-                      ->orWhere('category', 'LIKE', $searchTerm);
+                        ->orWhere('description', 'LIKE', $searchTerm)
+                        ->orWhere('category', 'LIKE', $searchTerm);
                 });
             }
 
@@ -108,7 +245,7 @@ class BuyerController extends Controller
 
 
             if ($request->boolean('with_menus')) {
-                $query->with(['menus' => function($query) {
+                $query->with(['menus' => function ($query) {
 
                     $query->orderBy('name', 'asc');
                 }]);
@@ -184,7 +321,6 @@ class BuyerController extends Controller
                     'sort_order' => $request->get('sort_order', 'asc'),
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error in getAllShops: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
@@ -225,7 +361,6 @@ class BuyerController extends Controller
                 'data' => $categories,
                 'total_categories' => count($categories)
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error in getShopCategories: ' . $e->getMessage());
 
@@ -266,7 +401,6 @@ class BuyerController extends Controller
                     'live_percentage' => $totalShops > 0 ? round(($liveShops / $totalShops) * 100, 2) : 0,
                 ]
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error in getShopStatistics: ' . $e->getMessage());
 
@@ -309,7 +443,6 @@ class BuyerController extends Controller
                 'data' => $shopsData,
                 'total' => $shops->count()
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error in getAllShopsSimple: ' . $e->getMessage());
 
