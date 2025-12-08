@@ -126,8 +126,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('/map', [BuyerController::class, 'getMapData']);
 
         Route::get('/shop/{shopId}', [BuyerController::class, 'getShopDetail']);
-
-        Route::get('/map-data', [BuyerController::class, 'getMapData']);
     });
 
     Route::prefix('seller')->group(function () {
