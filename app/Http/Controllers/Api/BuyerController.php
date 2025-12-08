@@ -27,33 +27,67 @@ class BuyerController extends Controller
     public function getMapData(Request $request)
     {
         try {
-            $request->validate([
-                'latitude' => 'required|numeric',
-                'longitude' => 'required|numeric',
-                'radius' => 'nullable|numeric|min:0.1|max:10'
+
+            if ($request->isMethod('get')) {
+
+                $latitude = $request->query('latitude');
+                $longitude = $request->query('longitude');
+                $radius = $request->query('radius', 1);
+            } else {
+
+                $request->validate([
+                    'latitude' => 'required|numeric',
+                    'longitude' => 'required|numeric',
+                    'radius' => 'nullable|numeric|min:0.1|max:10'
+                ]);
+
+                $latitude = $request->latitude;
+                $longitude = $request->longitude;
+                $radius = $request->get('radius', 1);
+            }
+
+
+            if (!$latitude || !$longitude) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Latitude dan longitude wajib diisi'
+                ], 400);
+            }
+
+            Log::info('BuyerController getMapData called', [
+                'method' => $request->method(),
+                'latitude' => $latitude,
+                'longitude' => $longitude,
+                'radius' => $radius,
+                'is_authenticated' => auth()
             ]);
 
-            $latitude = $request->latitude;
-            $longitude = $request->longitude;
-            $radius = $request->get('radius', 1);
 
             $weather = $this->weatherService->getCurrentWeather($latitude, $longitude);
 
+
             $shops = Shop::selectRaw("
-            *,
-            (6371 * acos(
-                cos(radians(?))
-                * cos(radians(latitude))
-                * cos(radians(longitude) - radians(?))
-                + sin(radians(?))
-                * sin(radians(latitude))
-            )) AS distance
-        ", [$latitude, $longitude, $latitude])
+                *,
+                (6371 * acos(
+                    cos(radians(?))
+                    * cos(radians(latitude))
+                    * cos(radians(longitude) - radians(?))
+                    + sin(radians(?))
+                    * sin(radians(latitude))
+                )) AS distance
+            ", [$latitude, $longitude, $latitude])
                 ->where('is_live', true)
                 ->having('distance', '<=', $radius)
                 ->orderBy('distance', 'asc')
                 ->with('menus')
                 ->get();
+
+            Log::info('Shops query result', [
+                'total_shops_in_db' => Shop::where('is_live', true)->count(),
+                'shops_in_radius' => $shops->count(),
+                'radius_km' => $radius
+            ]);
+
 
             $nearbyShops = $shops->map(function ($shop) {
                 return [
@@ -81,6 +115,7 @@ class BuyerController extends Controller
                 ];
             });
 
+
             $recommendation = null;
             if ($weather && $nearbyShops->isNotEmpty()) {
                 try {
@@ -103,14 +138,18 @@ class BuyerController extends Controller
                     'total_shops' => $nearbyShops->count(),
                     'recommendation' => $recommendation,
                     'user_location' => [
-                        'latitude' => $latitude,
-                        'longitude' => $longitude
+                        'latitude' => (float) $latitude,
+                        'longitude' => (float) $longitude
                     ],
                     'search_radius_km' => $radius
                 ]
             ]);
         } catch (\Exception $e) {
-            Log::error('Error in getMapData: ' . $e->getMessage());
+            Log::error('Error in getMapData', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return response()->json([
                 'success' => false,
                 'error' => 'Terjadi kesalahan saat mengambil data peta',

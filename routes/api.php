@@ -105,6 +105,16 @@ Route::post('/login', function (Request $request) {
     ]);
 });
 
+Route::prefix('buyer')->group(function () {
+
+    Route::get('/map-data', [BuyerController::class, 'getMapData']);
+
+    Route::get('/shops', [BuyerController::class, 'getAllShops']);
+    Route::get('/shops/simple', [BuyerController::class, 'getAllShopsSimple']);
+    Route::get('/shops/categories', [BuyerController::class, 'getShopCategories']);
+    Route::get('/shops/statistics', [BuyerController::class, 'getShopStatistics']);
+});
+
 Route::middleware(['auth:sanctum'])->group(function () {
 
     Route::get('/user', [UserController::class, 'getProfile']);
@@ -115,16 +125,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
         Route::post('/map', [BuyerController::class, 'getMapData']);
 
-        Route::post('/map-data', [BuyerController::class, 'getMapData']);
-
         Route::get('/shop/{shopId}', [BuyerController::class, 'getShopDetail']);
 
-        Route::get('/shops', [BuyerController::class, 'getAllShops']);
-        Route::get('/shops/simple', [BuyerController::class, 'getAllShopsSimple']);
-        Route::get('/shops/categories', [BuyerController::class, 'getShopCategories']);
-        Route::get('/shops/statistics', [BuyerController::class, 'getShopStatistics']);
-
-Route::get('/map-data', [BuyerController::class, 'getMapData']);
+        Route::get('/map-data', [BuyerController::class, 'getMapData']);
     });
 
     Route::prefix('seller')->group(function () {
